@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dynamic Workflows"
+  short_description: "Orchestrate Codex subagent workflows"
+  default_prompt: "Use $dynamic-workflows to orchestrate this task with Codex subagents."
