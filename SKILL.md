@@ -1,6 +1,6 @@
 ---
 name: dynamic-workflows
-description: "Design and run Codex-native dynamic workflow patterns for large tasks. Use when the user invokes $dynamic-workflows or asks for a workflow, workflows, dynamic workflow, subagent workflow, parallel agents, large migration, multi-agent audit, cross-checked research, adversarial plan review, or phased verification workflow."
+description: "Design and run Codex-native dynamic workflow patterns for large tasks. Use when the user invokes $dynamic-workflows or asks for ultracode, workflow, workflows, dynamic workflow, subagent workflow, parallel agents, large migration, multi-agent audit, cross-checked research, adversarial plan review, or phased verification workflow."
 ---
 
 # Dynamic Workflows
