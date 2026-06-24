@@ -12,15 +12,15 @@ Use when items need routing before work begins: issues, tickets, files, failures
 
 Shape:
 
-1. Classifier agent assigns each item a type, risk, owner, model need, or action.
+1. Classifier agent assigns each item a type, risk, owner, verification depth, or action.
 2. Main agent checks the classification rubric and spot-checks edge cases.
 3. Specialist agents handle each class with class-specific prompts.
 4. Main agent synthesizes by class and reports unresolved or low-confidence classifications.
 
 Good for:
 
-- Triage, model routing, support queues, issue queues, mixed test failures.
-- Choosing between cheap/fast agents and stronger/deeper agents.
+- Triage, role routing, support queues, issue queues, mixed test failures.
+- Choosing agent count, scope, and verification depth. This skill still launches workflow subagents on the highest available model with Extra High reasoning unless the user explicitly requests a cheaper or faster tradeoff.
 
 ### Fan-Out-And-Synthesize
 
@@ -40,6 +40,9 @@ Good for:
 Guardrail:
 
 - The synthesis step must compare against the coverage ledger so no item silently falls through.
+- Do not expand coverage by downgrading subagent model or reasoning effort. Batch work, reduce agent count, or report remaining coverage instead.
+- Nested delegation is allowed only as a bounded way to split discovered sub-batches. It must preserve the parent scope, stay inside the main-thread pre-allocated parent and child slots, and never create an open-ended swarm.
+- If the coverage ledger outgrows the default 4-agent cap, batch items conservatively and report remaining coverage instead of silently exceeding the cap. Treat the cap as total spawned agents for the workflow unless the user explicitly grants more.
 
 ### Adversarial Verification
 
@@ -47,9 +50,11 @@ Use when self-grading would be risky.
 
 Shape:
 
-1. Producer agent creates a finding, patch, claim, plan, or candidate answer.
+1. Producer agent or the main thread creates a finding, patch, claim, plan, or candidate answer.
 2. Separate verifier or refuter agent receives the result, rubric, and source scope without the producer's reasoning trail.
 3. Main agent accepts only items that survive verification or clearly marks unresolved ones.
+
+Under the default 4-agent cap, run this as a small batch: use the main thread as producer when practical, or allocate one producer and one verifier for the highest-risk batch instead of spawning producer/verifier pairs per item.
 
 Good for:
 
@@ -112,6 +117,8 @@ Default phases:
 3. Cross-check: one agent or the main thread challenges high-severity findings against source evidence.
 4. Synthesis: rank confirmed findings by severity with file references and test gaps.
 
+Under the default 4-agent cap, fit the common security/correctness/test/maintainability split by using the main thread for cross-check, or batch fewer review categories and report the remaining ledger. Do not spawn a fifth checker unless the user explicitly expands the cap.
+
 Bootstrap from actual repo evidence. Inspect local guidance, branch state, and scope documents when they exist, but do not assume a particular project has handoff files, phase docs, or branch rituals.
 
 Good splits:
@@ -132,13 +139,15 @@ Use for broad refactors, framework upgrades, API migration, naming changes, or m
 
 Default phases:
 
-1. Inventory: map all affected call sites, generated files, config, tests, and docs.
+1. Inventory: map all affected call sites, generated files, config, tests, and docs. Prefer the main thread for inventory when the write budget is tight.
 2. Slice design: group work by disjoint ownership boundaries.
 3. Pilot: run one small slice first and verify the strategy.
 4. Parallel implementation: spawn workers only for disjoint write sets.
-5. Adversarial verification: separate reviewers challenge representative patches or risky slices before integration.
+5. Adversarial verification: separate reviewers or the main thread challenge representative patches or risky slices before integration.
 6. Integration: main agent reviews conflicts, runs shared formatting/tests, and resolves seams.
 7. Verification: run targeted checks, then broader regression checks.
+
+Under the default 4-agent cap, treat inventory, integration, and final verification as main-thread work unless the user grants a larger cap. Use at most one pilot worker, two implementation workers, and one verifier, or a smaller batch when ownership is not clean.
 
 Good splits:
 
