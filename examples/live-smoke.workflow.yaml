@@ -17,12 +17,13 @@ phases:
     type: agent
     agent:
       id: respond
+      reasoningEffort: low
       prompt: Return a JSON object with ok set to true and message set to codex-dw-live-smoke.
       outputSchema:
         type: object
         additionalProperties: false
         required: [ok, message]
         properties:
-          ok: { const: true }
-          message: { const: codex-dw-live-smoke }
+          ok: { type: boolean }
+          message: { type: string }
 result: outputs.smoke

@@ -56,7 +56,7 @@ phases: []
 result: outputs.some-phase
 ```
 
-`argsSchema` and every `outputSchema` are JSON Schemas. The runner validates arguments before the first agent call. The Codex adapter asks for structured output and performs one corrective turn if the response is not valid JSON or does not satisfy the schema.
+`argsSchema` and every `outputSchema` are JSON Schemas. Output schemas must also follow the OpenAI [Structured Outputs supported subset](https://developers.openai.com/api/docs/guides/structured-outputs#supported-schemas): the root is an object, every object disables additional properties, all fields are required, and property schemas declare their types. The runner validates arguments before the first agent call. The Codex adapter asks for structured output and performs one corrective turn if the response is not valid JSON or does not satisfy the schema.
 
 Runtime `model` is optional. When omitted, the SDK inherits the configured Codex model. Reasoning defaults to `xhigh` where supported. Network defaults off.
 
