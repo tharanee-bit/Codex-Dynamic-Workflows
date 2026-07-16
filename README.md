@@ -132,7 +132,7 @@ Mutating agents are rejected unless all of the following are true:
 
 Each independent mutation unit receives a stable task branch and worktree. Pipeline stages for one item keep the same task worktree. Verified task commits are cherry-picked into `codex-dw/<run>/integration`; unrelated overlapping ownership or cherry-pick conflicts stop the run and preserve branches for recovery. The runner checks that the active user branch, HEAD, and Git working-tree status did not change.
 
-Runner Git commands use a credential-free environment with hooks disabled. Mutation refuses repositories with executable Git filters, external diff/textconv commands, or merge drivers. The expected integration HEAD and original active branch/base are persisted; resume accepts only the expected tip or a byte-exact interrupted cherry-pick.
+Runner Git commands use a credential-free environment with system/global Git config ignored and hooks disabled. Mutation refuses repositories with executable Git filters, external diff/textconv commands, or merge drivers. The expected integration HEAD and original active branch/base are persisted; resume accepts only the expected tip or a byte-exact interrupted cherry-pick.
 
 The integration branch is the terminal artifact. Merging it into the user's active branch is a separate user-controlled action.
 

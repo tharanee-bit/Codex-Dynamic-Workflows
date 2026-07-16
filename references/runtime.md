@@ -241,7 +241,7 @@ verification:
 
 The runner:
 
-1. Resolves the repository and rejects a dirty base, detached HEAD, or executable Git filter/diff/merge-driver configuration. Runner Git commands use a credential-free environment and disabled hooks.
+1. Resolves the repository and rejects a dirty base, detached HEAD, or repository-configured executable Git filter/diff/merge-driver configuration. Runner Git commands use a credential-free environment, ignore system/global Git config, and disable hooks.
 2. Creates `codex-dw/<run>/integration` in a runner-owned external worktree.
 3. Creates one task branch/worktree per independent mutation unit.
 4. Runs the worker in that worktree and rejects changes outside ownership.

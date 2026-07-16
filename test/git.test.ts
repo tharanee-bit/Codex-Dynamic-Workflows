@@ -140,6 +140,8 @@ describe("Git repository discovery and isolation", () => {
 
   it("disables repository hooks and rejects executable filter configuration", async () => {
     const { repository, worktreeRoot } = await createRepository();
+    const visibleConfig = await runGit(repository, ["config", "--show-scope", "--list"]);
+    expect(visibleConfig.stdout).not.toMatch(/^(?:system|global)\s/m);
     const marker = join(repository, "hook-ran");
     const hook = join(repository, ".git", "hooks", "post-checkout");
     await writeFile(hook, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`);

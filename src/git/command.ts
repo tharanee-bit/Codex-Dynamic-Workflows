@@ -105,7 +105,10 @@ export async function runGit(
   if (options.env?.GIT_INDEX_FILE !== undefined) {
     environment.GIT_INDEX_FILE = options.env.GIT_INDEX_FILE;
   }
-  const disabledHooks = join(tmpdir(), `codex-dw-disabled-hooks-${process.pid}-${randomUUID()}`);
+  const isolationToken = `${process.pid}-${randomUUID()}`;
+  const disabledHooks = join(tmpdir(), `codex-dw-disabled-hooks-${isolationToken}`);
+  environment.GIT_CONFIG_NOSYSTEM = "1";
+  environment.GIT_CONFIG_GLOBAL = join(tmpdir(), `codex-dw-empty-global-config-${isolationToken}`);
   return await runCommand("git", [
     "-c",
     `core.hooksPath=${disabledHooks}`,
