@@ -1,0 +1,58 @@
+{
+  "name": "codex-dynamic-workflows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental Codex-native dynamic workflow runtime and skill",
+  "type": "module",
+  "bin": {
+    "codex-dw": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:cli": "node scripts/test-cli.mjs",
+    "test:live": "CODEX_DW_LIVE=1 vitest run test/live-smoke.test.ts",
+    "test:watch": "vitest",
+    "check:links": "node scripts/check-links.mjs",
+    "check:yaml": "node scripts/check-yaml.mjs",
+    "check:installed-skill": "node scripts/check-installed-skill.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run test:cli && npm run check:links && npm run check:yaml",
+    "link:local": "npm run build && npm link"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "^0.144.5",
+    "ajv": "^8.17.1",
+    "commander": "^12.1.0",
+    "esbuild": "^0.25.5",
+    "minimatch": "^9.0.5",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "tsup": {
+      "esbuild": "0.28.1"
+    }
+  }
+}
