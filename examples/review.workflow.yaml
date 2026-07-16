@@ -1,0 +1,70 @@
+apiVersion: codex.openai.com/v1alpha1
+kind: Workflow
+metadata:
+  name: scoped-review
+  namespace: examples
+  description: Review independent code scopes, then synthesize structured findings.
+argsSchema:
+  type: object
+  additionalProperties: false
+  required: [scopes]
+  properties:
+    scopes:
+      type: array
+      minItems: 1
+      maxItems: 12
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, path]
+        properties:
+          id: { type: string, minLength: 1 }
+          path: { type: string, minLength: 1 }
+runtime:
+  profile: small
+  reasoningEffort: xhigh
+  networkAccess: false
+phases:
+  - id: review
+    type: pipeline
+    items:
+      select: args.scopes
+    key: id
+    concurrency: 4
+    stages:
+      - id: inspect
+        prompt: >-
+          Review {{item.path}} read-only. Return only evidence-backed findings for
+          correctness, security, or missing tests.
+        input: null
+        outputSchema:
+          type: object
+          additionalProperties: false
+          required: [scope, findings]
+          properties:
+            scope: { type: string }
+            findings:
+              type: array
+              items:
+                type: object
+                required: [severity, evidence, summary]
+                properties:
+                  severity: { enum: [high, medium, low] }
+                  evidence: { type: string }
+                  summary: { type: string }
+  - id: synthesize
+    type: agent
+    agent:
+      id: final
+      prompt: >-
+        Deduplicate and rank these scoped review results: {{outputs.review}}.
+        Preserve only findings with concrete evidence.
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [findings]
+        properties:
+          findings:
+            type: array
+            items: { type: object }
+result: outputs.synthesize

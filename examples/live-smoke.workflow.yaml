@@ -1,0 +1,28 @@
+apiVersion: codex.openai.com/v1alpha1
+kind: Workflow
+metadata:
+  name: live-smoke
+  namespace: examples
+  description: Opt-in one-agent smoke test for a configured Codex SDK session.
+argsSchema:
+  type: object
+  additionalProperties: false
+runtime:
+  profile: small
+  maxAgents: 1
+  concurrency: 1
+  networkAccess: false
+phases:
+  - id: smoke
+    type: agent
+    agent:
+      id: respond
+      prompt: Return a JSON object with ok set to true and message set to codex-dw-live-smoke.
+      outputSchema:
+        type: object
+        additionalProperties: false
+        required: [ok, message]
+        properties:
+          ok: { const: true }
+          message: { const: codex-dw-live-smoke }
+result: outputs.smoke

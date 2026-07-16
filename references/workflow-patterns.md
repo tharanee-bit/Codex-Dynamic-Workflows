@@ -1,221 +1,130 @@
 # Workflow Patterns
 
-Use these recipes as starting points. Adjust scope, agent count, and stop gates to the user's task.
+Choose native orchestration for one-off conversation work. Choose `codex-dw` when the user directly requests a saved/run workflow and persistent progress, selective resume, or reusable syntax materially helps. Declarative YAML/JSON is the default persisted format; TypeScript is advanced executable coordination.
 
-## Primitive Patterns
+## Pattern Mapping
 
-Use these named patterns directly when they fit. Combine them for complex workflows.
+| Pattern | Native shape | Declarative runtime shape |
+| --- | --- | --- |
+| Classify and act | Explorer classifies; specialists handle bounded classes | Sequential classifier `agent`, then `pipeline` selected items |
+| Fan out and synthesize | Bounded explorers plus main-thread barrier/synthesis | `parallel` for fixed branches or `pipeline` for item lists, then synthesis `agent` |
+| Adversarial verification | Producer plus independent checker | Mutating `agent` with required `verification`, or sequential producer/checker agents |
+| Generate and filter | Generators, filter, main decision | `parallel` generators then filter `agent` |
+| Tournament | Independent candidates plus judge | `parallel` candidates then judge `agent` |
+| Loop until done | Bounded rounds with explicit stop gate | `loop` with `maxIterations` and boolean result selector |
+| Per-item migration | Disjoint native workers | `pipeline`; each item streams stages and keeps one mutation worktree |
 
-### Classify-And-Act
+## Parallel Versus Pipeline
 
-Use when items need routing before work begins: issues, tickets, files, failures, tasks, or documents.
+Use `parallel` when all branches are known in the workflow and the next phase must wait for all of them. It is a completion barrier.
 
-Shape:
+Use `pipeline` for a list of items that each pass through the same stages. Item A may begin stage 2 while item B is still in stage 1; there is no global barrier between stages. The phase ends only after every item finishes all stages.
 
-1. Classifier agent assigns each item a type, risk, owner, verification depth, or action.
-2. Main agent checks the classification rubric and spot-checks edge cases.
-3. Specialist agents handle each class with class-specific prompts.
-4. Main agent synthesizes by class and reports unresolved or low-confidence classifications.
-
-Good for:
-
-- Triage, role routing, support queues, issue queues, mixed test failures.
-- Choosing agent count, scope, and verification depth. This skill still launches workflow subagents on the highest available model with Extra High reasoning unless the user explicitly requests a cheaper or faster tradeoff.
-
-### Fan-Out-And-Synthesize
-
-Use when many independent items need the same operation.
-
-Shape:
-
-1. Main agent builds a complete coverage ledger.
-2. One agent handles each item or bounded batch.
-3. A synthesis barrier waits for all required outputs.
-4. Main agent deduplicates, ranks, and verifies final results.
-
-Good for:
-
-- Codebase audits, many-file reviews, source gathering, checklist sweeps.
-
-Guardrail:
-
-- The synthesis step must compare against the coverage ledger so no item silently falls through.
-- Do not expand coverage by downgrading subagent model or reasoning effort. Batch work, reduce agent count, or report remaining coverage instead.
-- Nested delegation is allowed only as a bounded way to split discovered sub-batches. It must preserve the parent scope, stay inside the main-thread pre-allocated parent and child slots, and never create an open-ended swarm.
-- If the coverage ledger outgrows the default 4-agent cap, batch items conservatively and report remaining coverage instead of silently exceeding the cap. Treat the cap as total spawned agents for the workflow unless the user explicitly grants more.
-
-### Adversarial Verification
-
-Use when self-grading would be risky.
-
-Shape:
-
-1. Producer agent or the main thread creates a finding, patch, claim, plan, or candidate answer.
-2. Separate verifier or refuter agent receives the result, rubric, and source scope without the producer's reasoning trail.
-3. Main agent accepts only items that survive verification or clearly marks unresolved ones.
-
-Under the default 4-agent cap, run this as a small batch: use the main thread as producer when practical, or allocate one producer and one verifier for the highest-risk batch instead of spawning producer/verifier pairs per item.
-
-Good for:
-
-- Security findings, factual claims, root-cause hypotheses, patch review, plan review.
-
-### Generate-And-Filter
-
-Use when the first pass should be intentionally broad.
-
-Shape:
-
-1. Generator agents produce many candidate ideas, fixes, names, test cases, attacks, or refactors.
-2. Filter agents apply a rubric, remove duplicates, and reject weak candidates.
-3. Main agent returns only the strongest survivors with rationale.
-
-Good for:
-
-- Brainstorming, attack-surface discovery, design alternatives, refactor candidates.
-
-### Tournament
-
-Use when quality is easier to compare than score absolutely.
-
-Shape:
-
-1. Several agents attempt the same task with different approaches.
-2. Judge agents compare candidates pairwise against a rubric.
-3. Main agent selects the winner or ranked shortlist and explains tradeoffs.
-
-Good for:
-
-- Architecture options, naming, UX copy, ranking, hard planning choices.
-
-### Loop-Until-Done
-
-Use when the amount of work is unknown.
-
-Shape:
-
-1. Run a bounded discovery or fix round.
-2. Synthesize what changed or what was found.
-3. Continue until a stop condition is met.
-4. Stop only after the configured condition, not because the conversation feels long.
-
-Good stop conditions:
-
-- No new findings for two rounds.
-- All known failing tests pass.
-- Coverage ledger is complete.
-- Budget or agent cap is reached and remaining work is reported.
+For mutation, an item's stages share a stable task branch/worktree. Different items are independent mutation units and must own disjoint paths.
 
 ## Codebase Audit
 
-Use for branch reviews, security sweeps, auth checks, dependency risks, or architecture audits.
+Goal: complete, evidence-backed findings without duplicate review.
 
-Default phases:
+1. Build a coverage ledger from repository truth.
+2. Split by subsystem or risk category.
+3. Run read-only reviewers with structured findings.
+4. Challenge high-severity findings against source evidence.
+5. Synthesize, deduplicate, rank, and list skipped coverage.
 
-1. Scope discovery: main agent identifies target diff, directories, behavior, and coverage ledger.
-2. Parallel review: spawn read-only agents by risk category or subsystem.
-3. Cross-check: one agent or the main thread challenges high-severity findings against source evidence.
-4. Synthesis: rank confirmed findings by severity with file references and test gaps.
+Native: use a small bounded set of read-only agents and keep cross-check/synthesis in the main thread.
 
-Under the default 4-agent cap, fit the common security/correctness/test/maintainability split by using the main thread for cross-check, or batch fewer review categories and report the remaining ledger. Do not spawn a fifth checker unless the user explicitly expands the cap.
+Runtime: use a pipeline over `{id,path}` scopes when the list is data-driven, or parallel agents for a fixed security/correctness/tests split. Add a final synthesis phase. See `examples/review.workflow.yaml`.
 
-Bootstrap from actual repo evidence. Inspect local guidance, branch state, and scope documents when they exist, but do not assume a particular project has handoff files, phase docs, or branch rituals.
-
-Good splits:
-
-- Security, correctness, test coverage, maintainability.
-- API layer, data layer, frontend boundary, deployment/config.
-- One agent per package or service when boundaries are clean.
-
-Avoid:
-
-- Asking every agent to review everything.
-- Treating duplicate findings as stronger evidence.
-- Reporting issues without file paths, line references, or reproduction logic when the repo can provide them.
+Avoid asking every agent to review the entire repository or treating duplicate findings as stronger evidence.
 
 ## Large Migration
 
-Use for broad refactors, framework upgrades, API migration, naming changes, or multi-package mechanical edits.
+Goal: make broad changes while preserving ownership and recoverability.
 
-Default phases:
+1. Inventory affected code, tests, generated files, configuration, and docs.
+2. Partition by disjoint ownership.
+3. Pilot one item and verify the strategy.
+4. Process remaining items through inspect, mutate, and verify stages.
+5. Consolidate on the runner integration branch.
+6. Run targeted and broad regression checks outside the workflow as appropriate.
 
-1. Inventory: map all affected call sites, generated files, config, tests, and docs. Prefer the main thread for inventory when the write budget is tight.
-2. Slice design: group work by disjoint ownership boundaries.
-3. Pilot: run one small slice first and verify the strategy.
-4. Parallel implementation: spawn workers only for disjoint write sets.
-5. Adversarial verification: separate reviewers or the main thread challenge representative patches or risky slices before integration.
-6. Integration: main agent reviews conflicts, runs shared formatting/tests, and resolves seams.
-7. Verification: run targeted checks, then broader regression checks.
+Native: use worker agents only for cleanly disjoint paths; integrate and verify in the main thread.
 
-Under the default 4-agent cap, treat inventory, integration, and final verification as main-thread work unless the user grants a larger cap. Use at most one pilot worker, two implementation workers, and one verifier, or a smaller batch when ownership is not clean.
+Runtime: use a pipeline keyed by package/module ID. Every mutating stage declares ownership and a separate verifier contract. Stop on dirty base, path overlap, verifier rejection, conflict, or active-checkout drift.
 
-Good splits:
-
-- Package/module ownership.
-- Client/server boundaries.
-- Tests/docs/tooling separated from runtime code.
-
-Stop gates:
-
-- After inventory when blast radius is larger than expected.
-- After pilot if the pattern causes incompatible public API changes.
-- Before broad writes when tests are failing at baseline.
+The runtime integration branch is the terminal artifact, not authority to merge into the user's branch.
 
 ## Cross-Checked Research
 
-Use for research questions that need independent source gathering, claim verification, or competing interpretations.
+Goal: support current claims with independent sources and explicit uncertainty.
 
-Default phases:
+1. Decompose the question by subquestion or source type.
+2. Gather sources independently.
+3. Build a claim ledger.
+4. Challenge weak or conflicting claims.
+5. Report supported claims, caveats, dates, and links.
 
-1. Question decomposition: split by angle, geography, timeframe, stakeholder, or source type.
-2. Source gathering: agents collect sources independently and summarize claims.
-3. Claim ledger: main agent deduplicates claims and tags source support.
-4. Challenge pass: separate verifier agents test weak claims against primary sources.
-5. Report: present only supported claims, caveats, dates, and links.
-
-Good splits:
-
-- Primary sources, technical analysis, market/user evidence, opposing evidence.
-- One agent per subquestion when the subquestions do not depend on each other.
-
-Avoid:
-
-- Long quotes. Prefer concise paraphrase and links.
-- Current factual claims without fresh verification.
+Network access is an explicit workflow setting and defaults off. Browser/tool authorization remains governed by the active Codex runtime; a workflow cannot grant itself connector or network authority.
 
 ## Adversarial Plan Review
 
-Use before high-impact implementation, ambiguous product decisions, or risky architecture changes.
+Goal: expose correctness, product, operational, and testability risks before implementation.
 
-Default phases:
+1. Produce a candidate plan.
+2. Review it from distinct, non-duplicative perspectives.
+3. Resolve conflicts against original constraints.
+4. Optionally run a final constraint checker.
 
-1. Main agent drafts a candidate plan.
-2. Agents critique from distinct perspectives: correctness, UX/product, operational risk, testability.
-3. Main agent resolves conflicts and revises the plan.
-4. Optional final checker verifies the revised plan against constraints.
-
-Good outputs:
-
-- "Keep", "change", and "defer" decisions.
-- Explicit assumptions.
-- Acceptance criteria that would catch the highest-risk mistakes.
+Return keep/change/defer decisions, assumptions, and acceptance criteria that catch the highest-risk failure modes.
 
 ## Verification And Log Triage
 
-Use for failing CI, flaky tests, production logs, performance regressions, or multi-signal debugging.
+Goal: rank causes from separate evidence rather than patching several guesses.
 
-Default phases:
+1. Establish the failing command, expected behavior, and change scope.
+2. Split evidence: logs, tests, diff, environment/config.
+3. Generate bounded hypotheses.
+4. Refute the strongest hypotheses.
+5. Apply one narrow fix only when requested and ownership is clear.
+6. Rerun the smallest decisive check, then broader checks.
 
-1. Main agent establishes the failing command, expected behavior, and recent change scope.
-2. Agents split by evidence source: logs, tests, recent diff, environment/config.
-3. Hypothesis agents propose causes from disjoint evidence.
-4. Refuter agents challenge the strongest hypotheses.
-5. Main agent builds a ranked cause tree.
-6. Optional worker applies a narrow fix if ownership is clear.
-7. Main agent reruns the smallest decisive check, then broader checks.
+Avoid multiple agents repeating the same expensive command. Distinguish permission/environment failures from product defects.
 
-Avoid:
+## Generate And Filter
 
-- Multiple agents rerunning the same expensive failing command.
-- Fixing several plausible causes at once.
-- Treating sandbox or permission failures as product failures without evidence.
+Goal: explore broadly but return only rubric-surviving results.
+
+Run independent generators with different constraints or approaches. Feed their structured candidate lists to a filter that rejects duplicates, unsupported items, and rubric failures. Keep final product judgment with the main agent or an explicit final decision phase.
+
+## Tournament
+
+Goal: choose among viable alternatives when pairwise comparison is easier than absolute scoring.
+
+Run candidates independently, then pass only their outputs and the original rubric to a judge. Preserve minority options when evidence shows a meaningful tradeoff. Do not present vote count as proof.
+
+## Bounded Loop
+
+Goal: continue until a machine-checkable condition, not until the run merely feels long.
+
+Good stop conditions include:
+
+- Coverage ledger complete.
+- Known failures all pass.
+- Output field `done` is true.
+- No new confirmed findings in the configured bounded round.
+
+Always set a finite iteration cap. Reaching the cap without the stop condition is a failed/incomplete run, not success.
+
+## Selection Checklist
+
+- Is the task broad/risky enough to justify orchestration?
+- Is the request read-only or mutating?
+- Did the user explicitly request runtime execution, especially TypeScript?
+- Are item identities and call IDs stable across resume?
+- Is every result structured enough to synthesize deterministically?
+- Are mutation ownership sets disjoint?
+- Where are barriers and stop conditions?
+- Which independent verifier checks material outputs?
+- What budget/profile bounds the run?
+- What artifact proves completion: report, persisted result, integration branch, or tests?

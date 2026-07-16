@@ -1,103 +1,67 @@
 ---
 name: dynamic-workflows
-description: "Autonomously design and run bounded Codex-native dynamic workflow patterns when task shape calls for them: large or high-risk work, multi-step execution, broad audits, migrations, review-and-fix passes, adversarial verification, cross-checked research, parallel-agent work, or phased verification. Treat this as standing preference for conservative workflow orchestration; implicit loading does not authorize mutation without confirmation. Skip routine single-threaded work. Also use when invoked as $dynamic-workflows or when the user asks for ultracode, workflow, workflows, dynamic workflow, or subagent workflow."
+description: "Design and run bounded Codex-native workflow patterns for large, high-risk, multi-step, audit, migration, review-and-fix, adversarial verification, cross-checked research, or parallel-agent work. Supports native conversation subagent orchestration and explicit codex-dw YAML/JSON/TypeScript runtime execution. Implicit loading permits conservative planning and read-only orchestration only; it never authorizes mutation, executable workflows, expanded budgets, network access, or production effects. Also use when invoked as $dynamic-workflows or when the user asks for ultracode, workflows, dynamic workflows, or subagent workflows."
 ---
 
 # Dynamic Workflows
 
-Turn large or high-risk work into a Codex-native multi-agent workflow: a bounded phase plan, concrete subagent prompts, result contracts, cross-check steps, and a final synthesis path. This skill mimics the useful shape of Claude Code dynamic workflows without claiming Claude-only runtime features such as a background JavaScript workflow runtime, `/workflows` UI, resumable script variables, or `/deep-research`.
+Use workflow structure when it materially improves coverage, independence, verification, or resumability. Skip routine single-threaded tasks.
 
-## Invocation Policy
+## Choose The Surface
 
-- Load this skill when the task shape calls for dynamic workflow structure, even if the user does not mention the skill by name.
-- Skip it for routine single-threaded work where normal direct execution is enough.
-- Treat an implicit or explicit trigger as the user's standing preference for autonomous bounded workflow orchestration, not as standalone permission to mutate files.
-- Choose `design-only`, `read-only execution`, or `mutating execution` from the user's actual request. Review-only or audit-only prompts stay read-only. Mutating execution requires the active prompt to clearly ask for workspace changes, such as fix, implement, edit, update, refactor, migrate, deploy, or handling an identified issue.
-- When this skill is loaded implicitly rather than explicitly invoked, stop before the first workspace mutation and ask for confirmation, even when the active prompt contains mutating verbs. Implicit loading may plan, explore, and verify; it does not silently authorize edits.
-- Subagents, tool use, and file edits still follow current Codex runtime, tool, permission, and user-request rules.
+1. **Native orchestration**: coordinate Codex subagents in the current conversation. Use for one-off work, repo-native collaboration, and tasks that do not need persisted workflow state.
+2. **`codex-dw` runtime**: validate or execute a saved YAML/JSON/TypeScript workflow with persistent state. Use only after a direct workflow/run request or manual CLI invocation.
 
-## Subagent Runtime Policy
+Do not imply that `codex-dw` is a native `/workflows` command or exact Claude Code parity.
 
-- Spawn every workflow subagent on the highest available Codex model with Extra High reasoning.
-- As of 2026-06-24, the current explicit spawn overrides are `model: "gpt-5.5"` and `reasoning_effort: "xhigh"`. Treat that model id as a dated current-catalog value, not a permanent constant.
-- If the spawn interface or model catalog changes, use the highest available successor or closest stronger model, keep Extra High reasoning when supported, and report the exact fallback used.
-- Do not route workflow subagents to cheaper or faster models unless the user explicitly asks for that downgrade. Manage cost and latency by reducing scope, agent count, or rounds first.
+## Invocation And Authority
 
-## Core Loop
+- Load implicitly for broad or risky workflow-shaped tasks, but do not execute saved workflows or mutate files from implicit activation alone.
+- An explicit `$dynamic-workflows`, `ultracode`, workflow, or run request authorizes bounded orchestration within the actual requested mode; it does not broaden file scope, budgets, network, deployment, or other effects.
+- Review, audit, explain, or report requests remain read-only.
+- Native mutation requires a clear implement/fix/edit request and current Codex permissions. If loading was implicit, confirm before the first mutation.
+- Runtime mutation requires a direct run request plus `--allow-mutation`, a clean Git base, declared ownership, and independent verification.
+- Never run TypeScript merely because this skill loaded. TypeScript has no trust prompt by user choice, so explicit execution is a hard boundary.
 
-1. Identify which failure mode the workflow must defeat: agentic laziness, self-preferential bias, goal drift, or a combination.
-2. Classify the orchestration pattern: classify-and-act, fan-out-and-synthesize, adversarial verification, generate-and-filter, tournament, loop-until-done, or a domain recipe built from those patterns.
-3. Decide whether the user asked to design a workflow or run one. If they only asked to design, output the workflow spec without spawning agents.
-4. Treat either an implicit workflow-shaped need or explicit `$dynamic-workflows`/`ultracode` invocation as standing preference to run a bounded workflow autonomously, subject to current Codex subagent, tool, permission, and runtime rules. Do not let the workflow trigger itself upgrade a read-only or unclear request into mutating execution.
-5. Draft a short workflow spec with mode, phases, agent count, subagent runtime policy, read/write ownership, delegation policy, stop gates, expected outputs, and synthesis rules.
-6. Default to at most 4 total spawned agents per workflow, including child agents and agents used across later phases. The main thread pre-allocates all parent and child slots before execution, such as 2 parent agents plus 2 child slots.
-7. Start with a small slice when cost, runtime, blast radius, or permissions are uncertain.
-8. Spawn only bounded agents with non-overlapping work. Prefer `explorer` agents for read-heavy audits and `worker` agents only when write ownership is disjoint and the request's mode permits mutation.
-9. Allow one child layer by default when it improves coverage and the workflow spec pre-allocates slots. Deeper recursion requires an explicit request in the active prompt.
-10. Keep integration, user-facing decisions, and final judgment in the main thread.
-11. Cross-check findings before reporting or fixing. Prefer evidence-backed findings over consensus by volume.
-12. Close completed agent threads and descendants when their outputs have been integrated.
+## Native Orchestration Loop
 
-## Planning Contract
+1. State the goal, mode, pattern, failure mode, coverage ledger, ownership, budget, stop gates, synthesis rule, and acceptance checks.
+2. Prefer the smallest useful pattern: classify-and-act, fan-out-and-synthesize, adversarial verification, generate-and-filter, tournament, pipeline, or bounded loop.
+3. Use bounded agents with non-overlapping responsibilities. Keep integration and final decisions in the main thread.
+4. Default to four active agents unless the user or runtime grants a different bounded profile. Count delegated child work against the declared budget.
+5. Preserve independence: a material producer result should be checked by a separate verifier or direct evidence review.
+6. Track every item as covered, pending, skipped, or blocked. Never infer completeness from agent count.
+7. Stop on unclear mutation authority, overlapping writes, secrets, destructive scope, production effects, budget exhaustion, or runtime permission limits.
+8. Synthesize evidence, conflicts, skipped checks, and the actual terminal artifact. Close completed agents after integration.
 
-For every workflow, produce these fields before execution:
+For native subagents, inherit the configured Codex model rather than pinning a dated model identifier. Request `xhigh` reasoning where the active runtime supports it. Reduce scope, concurrency, or rounds before weakening verification quality unless the user requests a cost/latency tradeoff.
 
-- `Goal`: the concrete outcome.
-- `Mode`: design-only, read-only execution, or mutating execution.
-- `Pattern`: the named orchestration pattern or combination.
-- `Failure mode`: the context-window failure being addressed and the structural defense.
-- `Phases`: ordered phases with purpose, agent roles, barriers, and stop gates.
-- `Agent prompts`: self-contained prompts with input scope and output schema.
-- `Agent runtime`: all spawned agents follow the Subagent Runtime Policy above; include the current explicit override values from that section when the spawn interface supports them.
-- `Coverage`: the ledger that proves every item, claim, file, or rule was handled.
-- `Ownership`: read/write paths or responsibility boundaries for each agent.
-- `Budget`: token/time/agent cap, default maximum 4 total spawned agents including children, small-slice calibration, and when to stop early.
-- `Delegation`: allowed or forbidden, max depth, main-thread pre-allocated parent and child slots, inherited scope/permissions, and parent synthesis responsibility.
-- `Synthesis`: how to merge, deduplicate, verify, and rank results.
-- `Acceptance`: tests, checks, or human review needed before completion.
+## `codex-dw` Runtime Policy
 
-If the task is ambiguous or potentially expensive, choose conservative defaults, record assumptions, and proceed. Ask only when a hard stop applies or no safe default exists.
-
-## Autonomy Policy
-
-- Proceed with conservative defaults for large, risky, multi-step, broad, review-and-fix, migration, adversarial, cross-check, parallel-agent, or verification-heavy tasks.
-- Treat the selected mode as coming from the original request, not from a separate workflow sign-off. Review/audit/find-only requests remain read-only. Clear fix/implement/edit/update/refactor/migrate/deploy/handle-an-identified-issue requests may continue from verified findings into safe requested changes only when the workflow was explicitly invoked or the user confirms mutation after implicit loading.
-- Record assumptions, skipped coverage, budget limits, and why each agent split was chosen.
-- Fit broad recipes under the default cap by using the main thread for discovery, integration, and some verification; batching items; and reusing the main thread as producer or checker when that preserves independence. If the cap is reached, report remaining coverage instead of silently spawning extra agents.
-- Manage cost and latency by reducing scope, agent count, or rounds rather than lowering subagent model or reasoning effort. Use lower-cost or faster subagents only when the user explicitly requests that tradeoff.
-- If the active prompt does not clearly ask for workspace changes, stop after read-only synthesis and ask before the first mutation.
-- Never claim the skill overrides Codex sandboxing, approvals, connector authorization, or runtime tool limits.
+- Generate declarative YAML by default. Use TypeScript only when executable coordination logic is genuinely useful.
+- Validate before execution. Require stable operation IDs and JSON Schema outputs.
+- Default to the small profile: four concurrent calls and 25 total worker/verifier calls. Medium is 8/50; large is 16/100. Never exceed 16 concurrent or 100 total calls.
+- Network defaults off. Inherit the configured Codex model and default to `xhigh` reasoning where supported.
+- Persist state under `$CODEX_HOME/dynamic-workflows/runs/<run-id>` and use call hashes to reuse only unchanged completed calls.
+- On resume, restart interrupted/failed calls and invalidate downstream calls when rendered prompts or inputs change.
+- Treat TypeScript subprocess controls as defense in depth, not a complete JavaScript sandbox. Do not execute untrusted TypeScript.
+- For mutation, isolate each independent unit in a Git worktree; keep an item's pipeline stages in that worktree; reject ownership violations; verify read-only; integrate verified commits into the runner branch; preserve recovery branches on conflict.
+- The integration branch is the output. Merging it into the active user branch remains a separate user-controlled action.
+- Cleanup is conservative. Do not force-remove unintegrated task branches or dirty runner worktrees without explicit `--force` authority.
 
 ## Hard Stops
 
-- Stop before destructive, irreversible, or broad data-loss actions unless the active prompt explicitly requests them and current permissions allow them.
-- Stop before ordinary workspace mutation when the active prompt does not clearly ask for code, docs, config, or other file changes.
-- Stop before reading, exposing, or moving secrets, credentials, tokens, private keys, or unrelated sensitive files.
-- Stop before production-impacting actions unless deployment, production work, or external side effects are requested in the active prompt.
-- Stop before parallel mutating work when ownership is overlapping, unclear, or shared state cannot be protected.
-- Stop before exceeding the default 4-agent cap, the pre-allocated child budget, one child layer, or the user's explicit budget.
-- Stop before the first workspace mutation when the workflow was triggered implicitly and the user has not confirmed mutation.
-- Stop before silently spawning a lower-model or lower-reasoning subagent when the requested highest-model policy cannot be honored; report the limitation and the strongest available fallback.
-- Stop when Codex runtime, sandbox, approval, network, connector, or tool rules do not permit the planned action.
-
-## Guardrails
-
-- Do not invent a persistent workflow runtime. Save reusable workflow artifacts as Markdown runbooks only when the user asks.
-- Do not spawn agents for routine single-threaded work.
-- Do not run parallel mutating agents on overlapping files or shared state.
-- Do not allow unbounded nested delegation. Child agents must inherit the parent goal, non-goals, scope, permissions, output schema, and budget limits.
-- Do not let child agents broaden file scope, tool access, network access, or write ownership. Mutating child agents require `mutating execution` mode clearly derived from the original request and a strict subset of the parent's ownership.
-- Do not let agents make final product decisions independently; agents return evidence and proposals.
-- Do not import project-specific protocols, file names, branch rituals, or handoff conventions unless the prompt or discovered repo context establishes them.
-- Restate the original goal and constraints in each agent prompt to reduce goal drift.
-- Use separate verifier or refuter agents for material claims, findings, candidates, or patches when self-preferential bias is a risk.
-- Track coverage explicitly so broad workflows cannot silently skip files, claims, rows, issues, rules, or checklist items.
-- Do not hide uncertainty. Mark conflicts, unsupported claims, skipped checks, and assumptions in the synthesis.
-- Keep raw logs, noisy exploration, and speculative trails out of the final synthesis unless they are needed as evidence.
+- Unclear authority for mutation or executable TypeScript.
+- Destructive, irreversible, secret-bearing, production, or external side effects not directly requested.
+- Overlapping mutation ownership, dirty Git base, detached HEAD, verifier rejection, integration conflict, or active-checkout drift.
+- Unbounded loops, delegation, agent counts, or retry behavior.
+- Missing required evidence, structured-output contract, or acceptance check.
+- Runtime sandbox, approval, connector, network, or tool limitations.
 
 ## Reference Map
 
-Read only the relevant reference:
+Read only what the task needs:
 
-- `references/workflow-patterns.md`: choose a workflow recipe for audits, migrations, research, plan review, or verification.
-- `references/agent-contracts.md`: copy result schemas, agent prompt templates, synthesis checklists, and stop gates.
+- `references/runtime.md` — `codex-dw` schema, operations, TypeScript API, CLI, resume, Git, and containment.
+- `references/workflow-patterns.md` — native and persistent workflow recipes.
+- `references/agent-contracts.md` — prompt, result, verifier, ownership, and synthesis contracts.

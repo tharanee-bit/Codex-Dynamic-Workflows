@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://openai.com/codex-dynamic-workflows/schemas/workflow-v1alpha1.json",
+  "title": "Codex Dynamic Workflow v1alpha1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "argsSchema", "phases"],
+  "properties": {
+    "apiVersion": { "const": "codex.openai.com/v1alpha1" },
+    "kind": { "const": "Workflow" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "argsSchema": { "$ref": "#/$defs/jsonSchema" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/phase" }
+    },
+    "result": { "$ref": "#/$defs/selector" }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+    },
+    "selector": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!.*(?:^|\\.)(?:__proto__|prototype|constructor)(?:\\.|$))(?:[A-Za-z_][A-Za-z0-9_-]*|0|[1-9][0-9]*)(?:\\.(?:[A-Za-z_][A-Za-z0-9_-]*|0|[1-9][0-9]*))*$"
+    },
+    "jsonSchema": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "$ref": "#/$defs/stableId" },
+        "namespace": { "$ref": "#/$defs/stableId" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": { "enum": ["small", "medium", "large"] },
+        "concurrency": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "maxAgents": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["minimal", "low", "medium", "high", "xhigh"] },
+        "networkAccess": { "type": "boolean" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt", "outputSchema"],
+      "properties": {
+        "prompt": { "type": "string", "minLength": 1 },
+        "outputSchema": { "$ref": "#/$defs/jsonSchema" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "prompt", "outputSchema"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "prompt": { "type": "string", "minLength": 1 },
+        "outputSchema": { "$ref": "#/$defs/jsonSchema" },
+        "input": {},
+        "mode": { "enum": ["read-only", "mutating"] },
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["minimal", "low", "medium", "high", "xhigh"] },
+        "networkAccess": { "type": "boolean" },
+        "ownership": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "verification": { "$ref": "#/$defs/verification" },
+        "workspaceKey": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["mode"],
+            "properties": { "mode": { "const": "mutating" } }
+          },
+          "then": { "required": ["ownership", "verification"] }
+        }
+      ]
+    },
+    "agentPhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "agent"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "const": "agent" },
+        "agent": { "$ref": "#/$defs/agent" }
+      }
+    },
+    "parallelPhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "agents"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "const": "parallel" },
+        "agents": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/agent" }
+        }
+      }
+    },
+    "pipelineItems": {
+      "oneOf": [
+        { "type": "array" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["select"],
+          "properties": { "select": { "$ref": "#/$defs/selector" } }
+        }
+      ]
+    },
+    "pipelinePhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "items", "stages"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "const": "pipeline" },
+        "items": { "$ref": "#/$defs/pipelineItems" },
+        "key": { "$ref": "#/$defs/selector" },
+        "concurrency": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/agent" }
+        }
+      }
+    },
+    "loopPhase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "maxIterations", "until", "agent"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "const": "loop" },
+        "maxIterations": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "until": { "$ref": "#/$defs/selector" },
+        "agent": { "$ref": "#/$defs/agent" }
+      }
+    },
+    "phase": {
+      "oneOf": [
+        { "$ref": "#/$defs/agentPhase" },
+        { "$ref": "#/$defs/parallelPhase" },
+        { "$ref": "#/$defs/pipelinePhase" },
+        { "$ref": "#/$defs/loopPhase" }
+      ]
+    }
+  }
+}
