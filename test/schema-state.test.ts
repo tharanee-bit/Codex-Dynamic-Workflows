@@ -237,6 +237,34 @@ describe("run state store", () => {
     await expect(store.initializeRun(state)).rejects.toThrow(/already exists/);
   });
 
+  it("loads legacy state without review artifacts and validates the additive artifact contract", async () => {
+    const codexHome = await temporaryDirectory();
+    const store = new RunStateStore({ codexHome });
+    const legacy = runState("legacy-state");
+    await store.initializeRun(legacy);
+    expect((await store.readRun(legacy.id)).reviewArtifacts).toBeUndefined();
+
+    const withArtifact = runState("artifact-state");
+    withArtifact.reviewArtifacts = [{
+      protocol: "codex-dw.review-artifact/v1",
+      id: "artifact-state.integration",
+      reviewSessionId: "session-1",
+      kind: "git-range",
+      repositoryRoot: "/tmp/project",
+      baseCommit: "a".repeat(40),
+      headCommit: "b".repeat(40),
+      branch: "codex-dw/run/integration",
+      runStatus: "completed",
+      publishedAt: "2026-07-16T12:05:00.000Z",
+    }];
+    await store.initializeRun(withArtifact);
+    expect((await store.readRun(withArtifact.id)).reviewArtifacts).toEqual(withArtifact.reviewArtifacts);
+
+    const invalid = runState("invalid-artifact");
+    invalid.reviewArtifacts = [{ ...withArtifact.reviewArtifacts[0]!, baseCommit: "HEAD" }];
+    await expect(store.initializeRun(invalid)).rejects.toThrow(/invalid artifact/);
+  });
+
   it("rejects persisted state without a valid invocation budget counter", async () => {
     const store = new RunStateStore({ codexHome: await temporaryDirectory() });
     const invalid = { ...runState("invalid-budget"), agentCallsUsed: -1 } as RunState;

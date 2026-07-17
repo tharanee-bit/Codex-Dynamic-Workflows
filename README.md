@@ -19,6 +19,7 @@ Inspired by [Claude Code workflow concepts](https://code.claude.com/docs/en/work
 - Four-agent default concurrency, medium and large profiles, a 16-concurrent ceiling, and a 100-call ceiling.
 - Configured Codex model inheritance rather than a pinned model ID; `xhigh` reasoning is the default when supported.
 - Git worktree isolation, path ownership, independent verification, and integration-branch consolidation for mutation.
+- Optional session-bound `codex-dw.review-artifact/v1` Git-range pointers for read-only final-artifact review.
 - Constrained TypeScript child execution with a sanitized environment, a V8 heap/time limit, Node permissions, and no direct Codex credentials.
 
 ## Install locally
@@ -134,7 +135,9 @@ Each independent mutation unit receives a stable task branch and worktree. Pipel
 
 Runner Git commands use a credential-free environment with system/global Git config ignored and hooks disabled. Mutation refuses repositories with executable Git filters, external diff/textconv commands, or merge drivers. The expected integration HEAD and original active branch/base are persisted; resume accepts only the expected tip or a byte-exact interrupted cherry-pick.
 
-The integration branch is the terminal artifact. Merging it into the user's active branch is a separate user-controlled action.
+The integration branch is the terminal artifact. Merging it into the user's active branch is a separate user-controlled action. SDK workers and verifiers are bounded leaf calls: the adapter forbids nested `codex-dw` execution and unbudgeted subagent delegation, and marks them internally with `CODEX_DW_ACTIVE=1`.
+
+Inside an interactive Codex session, a completed, failed, or stopped mutating run that integrated changes records an optional `codex-dw.review-artifact/v1` pointer in `state.json`. It identifies the parent session, repository, base and integration commits, branch, status, and stable artifact ID so a compatible read-only reviewer such as Claude Fusion can inspect the committed range even when the active checkout is clean. Resume clears stale pointers; read-only or unchanged runs and runs without a valid parent session publish none. The reviewer remains advisory and never merges the integration branch.
 
 `codex-dw clean <run-id>` removes clean task worktrees, deletes integrated task branches, and preserves unintegrated task branches plus the integration branch. `--force` is required to remove unintegrated task branches or dirty task worktrees.
 

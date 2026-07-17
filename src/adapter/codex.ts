@@ -12,6 +12,19 @@ import type {
 } from "../types.js";
 
 const ajv = new Ajv({ allErrors: true, strict: false });
+const BOUNDED_WORKER_CONTRACT = [
+  "CODEX-DW BOUNDED WORKER CONTRACT:",
+  "You are one leaf worker inside a centrally budgeted codex-dw run.",
+  "Complete only the assigned call. Do not invoke codex-dw or dynamic workflows, and do not spawn or delegate to subagents.",
+  "Return the requested structured result; the parent runtime owns orchestration, verification, and synthesis.",
+].join("\n");
+
+export function codexWorkerEnvironment(environment: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const inherited = Object.fromEntries(
+    Object.entries(environment).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+  return { ...inherited, CODEX_DW_ACTIVE: "1" };
+}
 
 function zeroUsage(): Usage {
   return { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningOutputTokens: 0 };
@@ -77,7 +90,7 @@ export class CodexAdapter implements AgentAdapter {
   readonly #schemaRepairAttempts: number;
 
   constructor(options: CodexAdapterOptions = {}) {
-    this.#codex = options.codex ?? new Codex();
+    this.#codex = options.codex ?? new Codex({ env: codexWorkerEnvironment() });
     this.#schemaRepairAttempts = options.schemaRepairAttempts ?? 1;
   }
 
@@ -89,7 +102,7 @@ export class CodexAdapter implements AgentAdapter {
 
     const usage = zeroUsage();
     let attempts = 0;
-    let prompt = request.prompt;
+    let prompt = `${BOUNDED_WORKER_CONTRACT}\n\n${request.prompt}`;
     let lastError = "Agent did not return valid structured output";
 
     if (thread.id) {

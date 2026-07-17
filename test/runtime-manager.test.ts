@@ -181,7 +181,10 @@ describe("RunManager", () => {
       }
     `);
     const adapter = new FakeAdapter(() => ({}));
-    const manager = new RunManager({ adapter, store: new RunStateStore({ codexHome: join(root, "codex-home") }) });
+    const manager = new RunManager({
+      adapter,
+      store: new RunStateStore({ codexHome: join(root, "codex-home") }),
+    });
     const created = await manager.createRun({ workflow: path, args: {}, workingDirectory: project, allowMutation: false });
     await expect(manager.execute(created.id)).rejects.toThrow(/arguments are invalid/);
     expect(adapter.requests).toHaveLength(0);
@@ -298,16 +301,113 @@ describe("RunManager", () => {
       }
       return { value: request.callId };
     });
-    const manager = new RunManager({ adapter, store: new RunStateStore({ codexHome: join(root, "codex-home") }) });
+    const manager = new RunManager({
+      adapter,
+      store: new RunStateStore({ codexHome: join(root, "codex-home") }),
+      reviewSessionId: "parent-session",
+    });
     const created = await manager.createRun({ workflow: path, args: {}, workingDirectory: project, allowMutation: true });
     const completed = await manager.execute(created.id);
 
     expect(completed.git?.integrationBranch).toMatch(/^codex-dw\/.+\/integration$/);
     expect(completed.git?.pathOwners["owned.txt"]).toBe("work-one");
+    expect(completed.reviewArtifacts).toEqual([expect.objectContaining({
+      protocol: "codex-dw.review-artifact/v1",
+      id: `${created.id}.integration`,
+      reviewSessionId: "parent-session",
+      repositoryRoot: completed.git?.repositoryRoot,
+      baseCommit: completed.git?.baseHead,
+      headCommit: completed.git?.integrationHead,
+      branch: completed.git?.integrationBranch,
+      runStatus: "completed",
+    })]);
     expect(await readFile(join(completed.git!.integrationWorktree, "owned.txt"), "utf8")).toContain("work/refine.one");
     expect((await runGit(project, ["status", "--porcelain"])).stdout).toBe("");
+
+    const snapshots: Array<{ status: string; hasArtifact: boolean }> = [];
+    const save = manager.store.save.bind(manager.store);
+    manager.store.save = async (state) => {
+      snapshots.push({ status: state.status, hasArtifact: state.reviewArtifacts !== undefined });
+      await save(state);
+    };
+    completed.status = "running";
+    completed.pid = 999_999;
+    delete completed.reviewArtifacts;
+    await save(completed);
+    const stopped = await manager.status(created.id);
+    expect(stopped.status).toBe("stopped");
+    expect((await manager.store.readRun(created.id)).reviewArtifacts?.[0]).toMatchObject({ runStatus: "stopped" });
+    const resumed = await manager.resume(created.id);
+    expect(snapshots.some((snapshot) => !snapshot.hasArtifact && ["pending", "running"].includes(snapshot.status))).toBe(true);
+    expect(resumed.reviewArtifacts?.[0]).toMatchObject({ runStatus: "completed", reviewSessionId: "parent-session" });
+
     const cleaned = await manager.clean(created.id);
     expect(cleaned?.preservedBranches).toContain(completed.git!.integrationBranch);
+  });
+
+  it("publishes a failed partial integration and omits artifacts without a valid parent session", async () => {
+    const root = await temporaryDirectory("codex-dw-review-artifact-failure-");
+    const project = join(root, "project");
+    await mkdir(project);
+    await runGit(project, ["init", "-b", "main"]);
+    await writeFile(join(project, "base.txt"), "base\n");
+    const definition = join(project, "workflow.yaml");
+    await writeFile(definition, workflow(`  - id: edit
+    type: agent
+    agent:
+      id: worker
+      prompt: edit
+      mode: mutating
+      ownership: [owned.txt]
+      outputSchema:${objectSchema}
+      verification:
+        prompt: verify
+        outputSchema:
+          type: object
+          required: [accepted]
+          properties: { accepted: { const: true } }
+  - id: fail
+    type: agent
+    agent:
+      id: worker
+      prompt: fail after integration
+      outputSchema:${objectSchema}
+`));
+    await runGit(project, ["add", "."]);
+    await runGit(project, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "base"]);
+
+    const handler = async (request: Parameters<FakeAdapter["run"]>[0]) => {
+      if (request.callId.endsWith(".verify")) return { accepted: true };
+      if (request.mode === "mutating") {
+        await writeFile(join(request.workingDirectory!, "owned.txt"), "integrated\n");
+        return { value: "edited" };
+      }
+      throw new Error("intentional final failure");
+    };
+    const store = new RunStateStore({ codexHome: join(root, "codex-home") });
+    const manager = new RunManager({ adapter: new FakeAdapter(handler), store, reviewSessionId: "parent-session" });
+    const created = await manager.createRun({ workflow: definition, args: {}, workingDirectory: project, allowMutation: true });
+    await expect(manager.execute(created.id)).rejects.toThrow(/intentional final failure/);
+    const failed = await store.readRun(created.id);
+    expect(failed.reviewArtifacts?.[0]).toMatchObject({ runStatus: "failed", reviewSessionId: "parent-session" });
+
+    const noSessionStore = new RunStateStore({ codexHome: join(root, "codex-home-no-session") });
+    const noSessionManager = new RunManager({
+      adapter: new FakeAdapter(async (request) => {
+        if (request.callId.endsWith(".verify")) return { accepted: true };
+        if (request.mode === "mutating") await writeFile(join(request.workingDirectory!, "owned.txt"), "integrated\n");
+        if (request.prompt === "fail after integration") throw new Error("intentional final failure");
+        return { value: "edited" };
+      }),
+      store: noSessionStore,
+      reviewSessionId: "invalid session id",
+    });
+    const noSession = await noSessionManager.createRun({ workflow: definition, args: {}, workingDirectory: project, allowMutation: true });
+    await expect(noSessionManager.execute(noSession.id)).rejects.toThrow(/intentional final failure/);
+    expect((await noSessionStore.readRun(noSession.id)).reviewArtifacts).toBeUndefined();
+
+    await manager.clean(created.id, true);
+    await noSessionManager.clean(noSession.id, true);
   });
 
   it("serializes integration while independent mutation items execute in parallel", async () => {

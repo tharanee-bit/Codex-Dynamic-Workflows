@@ -17,6 +17,9 @@ import { join, resolve } from "node:path";
 import type { RunEvent, RunState } from "../types.js";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const ARTIFACT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/;
+const GIT_COMMIT_PATTERN = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 export interface RunStateStoreOptions {
   codexHome?: string;
@@ -140,6 +143,47 @@ function assertRunState(value: unknown, expectedId: string): asserts value is Ru
     || (value.agentCallsUsed as number) < 0
   ) {
     throw new RunStateCorruptError(expectedId, "schemaVersion, id, or agentCallsUsed is invalid");
+  }
+  if (!("reviewArtifacts" in value) || value.reviewArtifacts === undefined) return;
+  if (!Array.isArray(value.reviewArtifacts) || value.reviewArtifacts.length > 16) {
+    throw new RunStateCorruptError(expectedId, "reviewArtifacts must be a bounded array");
+  }
+  for (const artifact of value.reviewArtifacts) {
+    if (
+      typeof artifact !== "object"
+      || artifact === null
+      || !("protocol" in artifact)
+      || artifact.protocol !== "codex-dw.review-artifact/v1"
+      || !("id" in artifact)
+      || typeof artifact.id !== "string"
+      || !ARTIFACT_ID_PATTERN.test(artifact.id)
+      || !("reviewSessionId" in artifact)
+      || typeof artifact.reviewSessionId !== "string"
+      || !SESSION_ID_PATTERN.test(artifact.reviewSessionId)
+      || !("kind" in artifact)
+      || artifact.kind !== "git-range"
+      || !("repositoryRoot" in artifact)
+      || typeof artifact.repositoryRoot !== "string"
+      || artifact.repositoryRoot.length === 0
+      || artifact.repositoryRoot.length > 4096
+      || !("baseCommit" in artifact)
+      || typeof artifact.baseCommit !== "string"
+      || !GIT_COMMIT_PATTERN.test(artifact.baseCommit)
+      || !("headCommit" in artifact)
+      || typeof artifact.headCommit !== "string"
+      || !GIT_COMMIT_PATTERN.test(artifact.headCommit)
+      || !("branch" in artifact)
+      || typeof artifact.branch !== "string"
+      || artifact.branch.length === 0
+      || artifact.branch.length > 512
+      || !("runStatus" in artifact)
+      || !["completed", "failed", "stopped"].includes(String(artifact.runStatus))
+      || !("publishedAt" in artifact)
+      || typeof artifact.publishedAt !== "string"
+      || !Number.isFinite(Date.parse(artifact.publishedAt))
+    ) {
+      throw new RunStateCorruptError(expectedId, "reviewArtifacts contains an invalid artifact");
+    }
   }
 }
 
