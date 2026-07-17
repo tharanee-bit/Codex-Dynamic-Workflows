@@ -42,11 +42,13 @@ For native subagents, inherit the configured Codex model rather than pinning a d
 - Validate before execution. Require stable operation IDs and JSON Schema outputs.
 - Default to the small profile: four concurrent calls and 25 total worker/verifier calls. Medium is 8/50; large is 16/100. Never exceed 16 concurrent or 100 total calls.
 - Network defaults off. Inherit the configured Codex model and default to `xhigh` reasoning where supported.
+- Treat every SDK worker and verifier as one bounded leaf call. It must not launch `codex-dw`, invoke another dynamic workflow, or delegate to unbudgeted subagents; express fan-out and retries in the parent workflow.
 - Persist state under `$CODEX_HOME/dynamic-workflows/runs/<run-id>` and use call hashes to reuse only unchanged completed calls.
 - On resume, restart interrupted/failed calls and invalidate downstream calls when rendered prompts or inputs change.
 - Treat TypeScript subprocess controls as defense in depth, not a complete JavaScript sandbox. Do not execute untrusted TypeScript.
 - For mutation, isolate each independent unit in a Git worktree; keep an item's pipeline stages in that worktree; reject ownership violations; verify read-only; integrate verified commits into the runner branch; preserve recovery branches on conflict.
 - The integration branch is the output. Merging it into the active user branch remains a separate user-controlled action.
+- In an interactive Codex session, a terminal mutating run with integrated changes publishes a `codex-dw.review-artifact/v1` Git-range pointer in run state for an optional read-only final review. This does not merge or modify the integration branch.
 - Cleanup is conservative. Do not force-remove unintegrated task branches or dirty runner worktrees without explicit `--force` authority.
 
 ## Hard Stops

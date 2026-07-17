@@ -214,6 +214,33 @@ Thread IDs are persisted with call records. A rerun can resume the existing Code
 
 Usage and thread IDs from successful, repaired, failed, and interrupted workers/verifiers are aggregated into run state as streamed events arrive. Verifier calls count toward the total-call budget. Workflow results and phase outputs are persisted for resume and inspection; outputs from phases removed in an updated declarative definition are pruned.
 
+Each SDK worker and verifier is a bounded leaf call. The adapter prepends a contract forbidding nested `codex-dw` runs, dynamic-workflow invocation, and unbudgeted subagent delegation, and sets the internal environment marker `CODEX_DW_ACTIVE=1`. Define fan-out, loops, and retries in the parent workflow instead of creating hidden child orchestration.
+
+### Optional final-review artifact
+
+When all of the following are true, terminal run state includes one optional `reviewArtifacts` entry:
+
+- the run is mutating and its integration HEAD differs from the original base;
+- the run is `completed`, `failed`, or `stopped`; and
+- the process inherited a valid parent `CODEX_THREAD_ID` from an interactive Codex session.
+
+```json
+{
+  "protocol": "codex-dw.review-artifact/v1",
+  "id": "<run-id>.integration",
+  "reviewSessionId": "<parent-codex-session>",
+  "kind": "git-range",
+  "repositoryRoot": "/absolute/repository/root",
+  "baseCommit": "<full-commit-id>",
+  "headCommit": "<full-commit-id>",
+  "branch": "codex-dw/<run-id>/integration",
+  "runStatus": "completed",
+  "publishedAt": "<ISO-8601 timestamp>"
+}
+```
+
+The entry is a pointer to existing local Git objects, not a copied patch or merge request. Resume clears stale entries before execution and republishes the terminal range if changes remain. Read-only runs, unchanged integrations, invalid or absent parent sessions, and nonterminal state omit the entry. Legacy state without `reviewArtifacts` remains valid. Consumers must revalidate the session, repository, and commit objects and stay fail-open when the pointer is unavailable.
+
 ## Profiles and budgets
 
 | Profile | Semaphore | Total worker/verifier calls |

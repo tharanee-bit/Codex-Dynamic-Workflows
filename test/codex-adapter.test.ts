@@ -1,7 +1,7 @@
 import type { Codex, ThreadEvent } from "@openai/codex-sdk";
 import { describe, expect, it } from "vitest";
 
-import { CodexAdapter } from "../src/adapter/codex.js";
+import { CodexAdapter, codexWorkerEnvironment } from "../src/adapter/codex.js";
 import type { AgentEvent, AgentRequest } from "../src/types.js";
 
 function eventStream(events: ThreadEvent[]): AsyncIterable<ThreadEvent> {
@@ -62,10 +62,18 @@ describe("CodexAdapter", () => {
     expect(result.output).toEqual({ ok: true });
     expect(result.attempts).toBe(2);
     expect(result.usage).toEqual({ inputTokens: 4, cachedInputTokens: 2, outputTokens: 6, reasoningOutputTokens: 8 });
+    expect(prompts[0]).toContain("CODEX-DW BOUNDED WORKER CONTRACT");
+    expect(prompts[0]).toContain("Do not invoke codex-dw or dynamic workflows");
+    expect(prompts[0]).toContain("Return JSON");
     expect(prompts[1]).toContain("Return only a corrected JSON value");
     expect(emitted.some((entry) => entry.type === "agent.schema_repair")).toBe(true);
     expect(options[0]).toMatchObject({ modelReasoningEffort: "xhigh", networkAccessEnabled: false });
     expect(options[0]).not.toHaveProperty("model");
+  });
+
+  it("marks SDK subprocesses as bounded workflow workers without dropping inherited environment", () => {
+    const environment = codexWorkerEnvironment({ PATH: "/bin", CODEX_DW_ACTIVE: "old", OMIT: undefined });
+    expect(environment).toEqual({ PATH: "/bin", CODEX_DW_ACTIVE: "1" });
   });
 
   it("resumes a persisted thread id", async () => {

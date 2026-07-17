@@ -69,6 +69,17 @@ remaining risks, and integration notes.
 
 Native agents inherit the configured Codex model and request `xhigh` reasoning where supported; do not embed a dated model ID in saved contracts.
 
+## Runtime Leaf Worker Contract
+
+The SDK adapter prepends this invariant to every runtime worker and verifier prompt:
+
+- Complete exactly one parent-assigned call within its declared mode, ownership, tools, and network policy.
+- Do not invoke `codex-dw`, start another dynamic workflow, or delegate work to subagents.
+- Do not expand concurrency, retries, budgets, scope, or side effects.
+- Return only the requested structured result; the parent runtime owns orchestration, verification, integration, and final decisions.
+
+SDK subprocesses also receive `CODEX_DW_ACTIVE=1`. Integrations may use that internal marker to suppress nested lifecycle automation, but workflows must not depend on it as a public input. Parallelism and retries belong in the parent YAML/JSON/TypeScript definition so they remain bounded, visible, and resumable.
+
 ## Declarative Agent Contract
 
 Every runtime agent declares:

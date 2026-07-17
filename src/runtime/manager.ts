@@ -20,6 +20,7 @@ import type {
   AgentAdapter,
   JsonValue,
   PhaseRecord,
+  ReviewArtifact,
   RunEvent,
   RunOptions,
   RunState,
@@ -33,10 +34,12 @@ const DECLARATIVE_EXTENSIONS = new Set([".yaml", ".yml", ".json"]);
 const TYPESCRIPT_EXTENSIONS = new Set([".ts", ".mts", ".cts"]);
 const WORKFLOW_EXTENSIONS = [...DECLARATIVE_EXTENSIONS, ...TYPESCRIPT_EXTENSIONS];
 const ajv = new Ajv({ allErrors: true, strict: false, allowUnionTypes: true });
+const REVIEW_SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 export interface RunManagerOptions {
   store?: RunStateStore;
   adapter?: AgentAdapter;
+  reviewSessionId?: string;
 }
 
 export interface CreateRunOptions extends Omit<RunOptions, "workflowPath"> {
@@ -132,6 +135,36 @@ function createId(): string {
   return `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
 }
 
+function reviewSessionId(value: string | undefined): string | undefined {
+  return value !== undefined && REVIEW_SESSION_ID_PATTERN.test(value) ? value : undefined;
+}
+
+function publishReviewArtifact(state: RunState, sessionId: string | undefined): void {
+  delete state.reviewArtifacts;
+  const git = state.git;
+  if (
+    sessionId === undefined
+    || !state.allowMutation
+    || git === undefined
+    || git.integrationHead === git.baseHead
+    || !["completed", "failed", "stopped"].includes(state.status)
+  ) {
+    return;
+  }
+  state.reviewArtifacts = [{
+    protocol: "codex-dw.review-artifact/v1",
+    id: `${state.id}.integration`,
+    reviewSessionId: sessionId,
+    kind: "git-range",
+    repositoryRoot: git.repositoryRoot,
+    baseCommit: git.baseHead,
+    headCommit: git.integrationHead,
+    branch: git.integrationBranch,
+    runStatus: state.status as ReviewArtifact["runStatus"],
+    publishedAt: state.completedAt ?? state.updatedAt,
+  }];
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -180,10 +213,12 @@ function event(state: RunState, type: string, fields: Partial<RunEvent> = {}): R
 export class RunManager {
   readonly store: RunStateStore;
   readonly adapter: AgentAdapter;
+  readonly #reviewSessionId: string | undefined;
 
   constructor(options: RunManagerOptions = {}) {
     this.store = options.store ?? new RunStateStore();
     this.adapter = options.adapter ?? new CodexAdapter();
+    this.#reviewSessionId = reviewSessionId(options.reviewSessionId ?? process.env.CODEX_THREAD_ID);
   }
 
   async validate(workflow: string, workingDirectory = process.cwd()): Promise<{
@@ -329,6 +364,7 @@ export class RunManager {
       state.startedAt ??= new Date().toISOString();
       delete state.completedAt;
       delete state.error;
+      delete state.reviewArtifacts;
       state.pid = process.pid;
       state.updatedAt = new Date().toISOString();
       await this.store.save(state);
@@ -401,6 +437,7 @@ export class RunManager {
       state.completedAt = new Date().toISOString();
       state.updatedAt = state.completedAt;
       delete state.pid;
+      publishReviewArtifact(state, this.#reviewSessionId);
       await this.store.save(state);
       await this.store.appendEvent(event(state, "run.completed"));
       return state;
@@ -411,6 +448,7 @@ export class RunManager {
       state.completedAt = new Date().toISOString();
       state.updatedAt = state.completedAt;
       delete state.pid;
+      publishReviewArtifact(state, this.#reviewSessionId);
       await this.store.save(state);
       await this.store.appendEvent(event(state, state.status === "stopped" ? "run.stopped" : "run.failed", {
         data: { error: message },
@@ -443,13 +481,14 @@ export class RunManager {
     try {
       await this.store.clearStopRequest(runId);
       const state = await this.store.readRun(runId);
+      delete state.reviewArtifacts;
       if (state.status === "stopped" || state.status === "stopping") {
         state.status = "pending";
         delete state.error;
         delete state.completedAt;
-        state.updatedAt = new Date().toISOString();
-        await this.store.save(state);
       }
+      state.updatedAt = new Date().toISOString();
+      await this.store.save(state);
       handedToExecution = true;
       return await this.#executeLocked(runId, workflowOverride, lock);
     } finally {
@@ -466,6 +505,7 @@ export class RunManager {
       state.error = "Workflow stopped before runner startup";
       state.completedAt = new Date().toISOString();
       state.updatedAt = state.completedAt;
+      publishReviewArtifact(state, this.#reviewSessionId);
       await this.store.save(state);
       await this.store.appendEvent(event(state, "run.stopped", { data: { error: state.error } }));
       return state;
@@ -524,6 +564,7 @@ export class RunManager {
       state.completedAt = new Date().toISOString();
       state.updatedAt = state.completedAt;
       delete state.pid;
+      publishReviewArtifact(state, this.#reviewSessionId);
       await this.store.save(state);
       await this.store.appendEvent(event(state, "run.stopped", { data: { error: state.error } }));
     }

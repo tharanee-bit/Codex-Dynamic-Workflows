@@ -152,6 +152,19 @@ export interface GitRunState {
   pathOwners: Record<string, string>;
 }
 
+export interface ReviewArtifact {
+  protocol: "codex-dw.review-artifact/v1";
+  id: string;
+  reviewSessionId: string;
+  kind: "git-range";
+  repositoryRoot: string;
+  baseCommit: string;
+  headCommit: string;
+  branch: string;
+  runStatus: Extract<RunStatus, "completed" | "failed" | "stopped">;
+  publishedAt: string;
+}
+
 export interface RunState {
   schemaVersion: 1;
   id: string;
@@ -180,6 +193,7 @@ export interface RunState {
   phases: Record<string, PhaseRecord>;
   outputs: Record<string, JsonValue>;
   git?: GitRunState;
+  reviewArtifacts?: ReviewArtifact[];
 }
 
 export interface RunOptions {
