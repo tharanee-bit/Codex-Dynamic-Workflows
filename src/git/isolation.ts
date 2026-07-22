@@ -11,6 +11,7 @@ import {
 } from "./errors.js";
 import { isPathInside, safeComponent } from "./names.js";
 import { assertOwnedPaths } from "./ownership.js";
+import { canonicalPath } from "../util/path.js";
 import type {
   CleanupResult,
   GitRepositorySnapshot,
@@ -117,7 +118,7 @@ async function assertDescendsFrom(
 
 async function registeredWorktrees(repositoryRoot: string): Promise<RegisteredWorktree[]> {
   const output = (await runGit(repositoryRoot, ["worktree", "list", "--porcelain"])).stdout;
-  return output
+  const worktrees = output
     .trim()
     .split(/\n\n+/)
     .filter((block) => block.length > 0)
@@ -133,6 +134,10 @@ async function registeredWorktrees(repositoryRoot: string): Promise<RegisteredWo
       return record;
     })
     .filter((record) => record.path.length > 0);
+  return await Promise.all(worktrees.map(async (record) => ({
+    ...record,
+    path: await canonicalPath(record.path),
+  })));
 }
 
 async function assertAvailablePath(path: string): Promise<void> {
@@ -356,7 +361,7 @@ async function cherryStatus(
 }
 
 export async function discoverGitRepository(repository: string): Promise<GitRepositorySnapshot> {
-  const repositoryRoot = resolve(
+  const repositoryRoot = await canonicalPath(
     (await runGit(resolve(repository), ["rev-parse", "--show-toplevel"])).stdout.trim(),
   );
   await assertNoExecutableGitConfiguration(repositoryRoot);
@@ -378,7 +383,7 @@ export async function initializeGitRun(
     throw new DirtyRepositoryError(snapshot.statusPorcelain);
   }
 
-  const worktreeRoot = resolve(options.worktreeRoot);
+  const worktreeRoot = await canonicalPath(options.worktreeRoot);
   const runKey = safeComponent(options.runId);
   const runWorktreeRoot = join(worktreeRoot, runKey);
   if (isPathInside(snapshot.repositoryRoot, runWorktreeRoot)) {
@@ -408,7 +413,10 @@ export async function initializeGitRun(
     for (const [key, value] of Object.entries(actual)) {
       const expectedValue = expected[key as keyof typeof actual];
       const pathValue = key.endsWith("Root") || key.endsWith("Worktree");
-      if ((pathValue ? resolve(String(value)) : value) !== (pathValue ? resolve(String(expectedValue)) : expectedValue)) {
+      if (
+        (pathValue ? await canonicalPath(String(value)) : value)
+        !== (pathValue ? await canonicalPath(String(expectedValue)) : expectedValue)
+      ) {
         throw new Error(`Persisted Git run ${key} no longer matches the active checkout`);
       }
     }

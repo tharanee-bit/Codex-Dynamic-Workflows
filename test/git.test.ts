@@ -1,4 +1,4 @@
-import { access, chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -108,7 +108,7 @@ describe("Git repository discovery and isolation", () => {
       /^codex-dw\/[a-z0-9-]+\/[a-z]+$/,
     );
     expect(task.branch).toMatch(/^codex-dw\/[a-z0-9-]+\/tasks\/[a-z0-9-]+$/);
-    expect(task.path.startsWith(worktreeRoot)).toBe(true);
+    expect(task.path.startsWith(session.worktreeRoot)).toBe(true);
     expect(safeComponent("same")).toBe(safeComponent("same"));
     expect(safeComponent("different")).not.toBe(safeComponent("same"));
     expect((await runGit(repository, ["status", "--porcelain"])).stdout).toBe("");
@@ -124,6 +124,43 @@ describe("Git repository discovery and isolation", () => {
 
     expect(resumed.integrationWorktree).toBe(session.integrationWorktree);
     expect(resumedTask).toEqual(firstTask);
+    await cleanupGitRun(resumed, { force: true });
+  });
+
+  it("canonicalizes symlinked worktree roots and accepts persisted aliases", async () => {
+    const root = await temporaryDirectory("codex-dw-git-alias-");
+    const target = join(root, "target");
+    const alias = join(root, "alias");
+    await mkdir(target);
+    await symlink(target, alias, "dir");
+    const repository = join(alias, "repository");
+    const worktreeRoot = join(alias, "worktrees");
+    await mkdir(repository);
+    await runGit(repository, ["init", "-b", "main"]);
+    await writeFile(join(repository, "base.txt"), "base\n");
+    await runGit(repository, ["add", "base.txt"]);
+    await runGit(repository, [
+      "-c", "user.name=Test Fixture",
+      "-c", "user.email=fixture@example.invalid",
+      "commit", "-m", "base",
+    ]);
+
+    const session = await initializeGitRun({ repository, worktreeRoot, runId: "aliased" });
+    expect(session.worktreeRoot).toBe(await realpath(worktreeRoot));
+    const persistedAlias: GitRunSession = {
+      ...session,
+      repositoryRoot: repository,
+      worktreeRoot,
+      runWorktreeRoot: join(worktreeRoot, session.runKey),
+      integrationWorktree: join(worktreeRoot, session.runKey, "integration"),
+    };
+    const resumed = await initializeGitRun({
+      repository,
+      worktreeRoot,
+      runId: "aliased",
+      expected: persistedAlias,
+    });
+    expect(resumed.integrationWorktree).toBe(session.integrationWorktree);
     await cleanupGitRun(resumed, { force: true });
   });
 

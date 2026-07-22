@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -40,6 +40,33 @@ describe("TypeScript workflow execution", () => {
     expect(nodePermissionFlag(new Set(["--permission", "--experimental-permission"]))).toBe("--permission");
     expect(nodePermissionFlag(new Set(["--experimental-permission"]))).toBe("--experimental-permission");
     expect(nodePermissionFlag(new Set())).toBeUndefined();
+  });
+
+  it("canonicalizes a symlinked temporary directory for Node permission paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "codex-dw-ts-alias-"));
+    temporaryDirectories.push(root);
+    const target = join(root, "target");
+    const alias = join(root, "alias");
+    await mkdir(target);
+    await symlink(target, alias, "dir");
+    const workflowDirectory = await mkdtemp(join(alias, "workflow-"));
+    const workflowPath = join(workflowDirectory, "workflow.ts");
+    await writeFile(workflowPath, `${metadata}\nexport async function run() { return { ok: true }; }`, "utf8");
+
+    const previousTmpdir = process.env.TMPDIR;
+    process.env.TMPDIR = alias;
+    try {
+      const execution = await executeTypeScriptWorkflow({
+        workflowPath,
+        args: {},
+        wallTimeMs: 5_000,
+        rpc: async () => undefined,
+      });
+      expect(execution.result).toEqual({ ok: true });
+    } finally {
+      if (previousTmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previousTmpdir;
+    }
   });
 
   it("runs phase, agent, log, parallel, bounded pipeline, and bounded loop semantics over RPC", async () => {
