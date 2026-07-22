@@ -5,6 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 
 import { build } from "esbuild";
 
+import { canonicalPath } from "../util/path.js";
 import type {
   BundleTypeScriptWorkflowOptions,
   TypeScriptWorkflowBundle,
@@ -49,8 +50,8 @@ export async function bundleTypeScriptWorkflow(
   const importRoot = dirname(entry);
   const temporaryDirectory = options.outputDirectory
     ? undefined
-    : await mkdtemp(join(tmpdir(), "codex-dw-ts-"));
-  const outputDirectory = resolve(options.outputDirectory ?? temporaryDirectory!);
+    : await canonicalPath(await mkdtemp(join(tmpdir(), "codex-dw-ts-")));
+  const outputDirectory = await canonicalPath(resolve(options.outputDirectory ?? temporaryDirectory!));
   await mkdir(outputDirectory, { recursive: true, mode: 0o700 });
 
   const outputName = `${basename(entry).replace(/\.[^.]+$/, "")}.bundle.mjs`;
