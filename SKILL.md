@@ -1,6 +1,6 @@
 ---
 name: dynamic-workflows
-description: "Design and run bounded Codex-native workflow patterns for large, high-risk, multi-step, audit, migration, review-and-fix, adversarial verification, cross-checked research, or parallel-agent work. Supports native conversation subagent orchestration and explicit codex-dw YAML/JSON/TypeScript runtime execution. Implicit loading permits conservative planning and read-only orchestration only; it never authorizes mutation, executable workflows, expanded budgets, network access, or production effects. Also use when invoked as $dynamic-workflows or when the user asks for ultracode, workflows, dynamic workflows, or subagent workflows."
+description: "Use for bounded native Codex multi-agent orchestration when a task has at least two independent workstreams or independent verification would materially improve confidence: broad or high-risk multi-step work, audits, migrations, multi-area review-and-fix, adversarial verification, cross-checked research, or explicit $dynamic-workflows, ultracode, workflow, subagent, or parallel-agent requests. Skip routine single-threaded tasks. Use the persisted codex-dw YAML/JSON/TypeScript runtime only after a direct run request; implicit loading never grants mutation, expanded budgets, network access, deployment, or production authority."
 ---
 
 # Dynamic Workflows
